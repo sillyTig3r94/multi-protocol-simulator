@@ -23,10 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "stdio.h"
-#include "stdlib.h"
-#include "stdbool.h"
-#include "string.h"
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,50 +41,52 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+CAN_HandleTypeDef hcan1;
+
 I2C_HandleTypeDef hi2c1;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
+/* CAN  - Private variables ---------------------------------------------------------*/
+CAN_TxHeaderTypeDef TxHeader;
+CAN_RxHeaderTypeDef RxHeader;
+uint8_t				TxData[8];
+uint8_t				RxData[8];
+uint32_t			TxMailbox;
+CAN_FilterTypeDef 	sFilterConfig;
+
+/* I2C  - Private variables ---------------------------------------------------------*/
 /*
- * i2c parameter section
+ * Master Variable
  */
 uint8_t master_rx[10];
-
 uint8_t master_tx[10] = "12345678";
-
-uint8_t slaveAddr = 0x08; //default
-
-uint8_t rxSize = 5;	//default
-
 uint8_t master_NumOfByte = 5; //default
-
+/*
+ * Slave Variable
+ */
+uint8_t slaveAddr = 0x08; //default
 uint8_t slave_rx[10];
 uint8_t slave_tx[10] = "abcdefg";
 uint8_t slave_size;
 uint8_t slave_NumOfByte = 6;
-
-#define FSM_I2C_MasterSetWrite		 		0x01
-
-#define FSM_I2C_MasterWriteData				0x02
-
-#define FSM_I2C_MasterRead					0x03
-
-#define FSM_I2C_MasterSel					0x04
-
-#define FSM_I2C_SlaveSel					0x05
-
-#define FSM_I2C_SlaveRespSet				0x06
-
-#define FSM_I2C_SlaveResp					0x07
-
-#define FSM_I2C_SetSlaveAddr				0x08
 /*
- * uart parameter section
+ * FSM - I2C Control Definition
  */
-uint8_t serial_rxChar[32];
+#define FSM_I2C_MasterSetWrite		 		0x01
+#define FSM_I2C_MasterWriteData				0x02
+#define FSM_I2C_MasterRead					0x03
+#define FSM_I2C_MasterSel					0x04
+#define FSM_I2C_SlaveSel					0x05
+#define FSM_I2C_SlaveRespSet				0x06
+#define FSM_I2C_SlaveResp					0x07
+#define FSM_I2C_SetSlaveAddr				0x08
 
+/* UART - Private variables ---------------------------------------------------------*/
+uint8_t serial_rxChar[32];
+uint8_t rxSize = 5;	//default
 uint16_t delay_period = 1000; //default = 1000
 /* USER CODE END PV */
 
@@ -95,9 +94,10 @@ uint16_t delay_period = 1000; //default = 1000
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_CAN1_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
-void printComMsg(uint8_t cmd,uint8_t SlaveAddr,uint8_t Size);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -135,24 +135,22 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
+  MX_CAN1_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
+ 
+ 
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  HAL_UART_Transmit(&huart2, (uint8_t *) "Starting...\n", 12,100);
-
+  printf("STM32 - Nucleo L476RG - Program start... \n\r");
   while (1)
   {
     /* USER CODE END WHILE */
-	  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
-	  HAL_Delay(delay_period);
     /* USER CODE BEGIN 3 */
-
-
   }
   /* USER CODE END 3 */
 }
@@ -212,6 +210,83 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief CAN1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_CAN1_Init(void)
+{
+
+  /* USER CODE BEGIN CAN1_Init 0 */
+
+  /* USER CODE END CAN1_Init 0 */
+
+  /* USER CODE BEGIN CAN1_Init 1 */
+
+  /* USER CODE END CAN1_Init 1 */
+  hcan1.Instance = CAN1;
+  hcan1.Init.Prescaler = 10;
+  hcan1.Init.Mode = CAN_MODE_NORMAL;
+  hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  hcan1.Init.TimeSeg1 = CAN_BS1_13TQ;
+  hcan1.Init.TimeSeg2 = CAN_BS2_2TQ;
+  hcan1.Init.TimeTriggeredMode = DISABLE;
+  hcan1.Init.AutoBusOff = DISABLE;
+  hcan1.Init.AutoWakeUp = DISABLE;
+  hcan1.Init.AutoRetransmission = DISABLE;
+  hcan1.Init.ReceiveFifoLocked = DISABLE;
+  hcan1.Init.TransmitFifoPriority = DISABLE;
+  if (HAL_CAN_Init(&hcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CAN1_Init 2 */
+
+  uint32_t filter_id = 0x00000000;
+  uint32_t filter_mask = 0x1FFFFFFF8;
+
+  sFilterConfig.FilterBank = 0;
+  sFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  sFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+  sFilterConfig.FilterIdHigh = ((filter_id << 5)  | (filter_id >> (32 - 5))) & 0xFFFF; // STID[10:0] & EXTID[17:13]
+  sFilterConfig.FilterIdLow = (filter_id >> (11 - 3)) & 0xFFF8; // EXID[12:5] & 3 Reserved bits
+  sFilterConfig.FilterMaskIdHigh = ((filter_mask << 5)  | (filter_mask >> (32 - 5))) & 0xFFFF;
+  sFilterConfig.FilterMaskIdLow = (filter_mask >> (11 - 3)) & 0xFFF8;
+
+  sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+  sFilterConfig.FilterActivation = ENABLE;
+  sFilterConfig.SlaveStartFilterBank = 14;
+
+  if(HAL_CAN_ConfigFilter(&hcan1, &sFilterConfig) != HAL_OK)	Error_Handler();
+
+  // Step 2: Start CAN
+  if(HAL_CAN_Start(&hcan1) != HAL_OK)
+	  Error_Handler();
+  // Step 3: Enable Notification
+  if(HAL_CAN_ActivateNotification(&hcan1, CAN_IT_TX_MAILBOX_EMPTY | CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
+	  Error_Handler();
+  // Step 4: Initialize/Fill the TX message
+  TxHeader.StdId = 0x323;	//CAN Standard ID
+  TxHeader.ExtId = 0x00;	//CAN Extend ID
+  TxHeader.RTR = CAN_RTR_DATA; //
+  TxHeader.IDE = CAN_ID_STD;	//
+  TxHeader.DLC = 8;
+  TxHeader.TransmitGlobalTime = DISABLE;
+
+
+  TxData[0] = 1;
+  TxData[1] = 2;
+  TxData[2] = 3;
+  TxData[3] = 4;
+  TxData[4] = 5;
+  TxData[5] = 6;
+  TxData[6] = 7;
+  TxData[7] = 8;
+  /* USER CODE END CAN1_Init 2 */
+
+}
+
+/**
   * @brief I2C1 Initialization Function
   * @param None
   * @retval None
@@ -228,7 +303,7 @@ static void MX_I2C1_Init(void)
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
   hi2c1.Init.Timing = 0x10909CEC;
-  hi2c1.Init.OwnAddress1 = 8;
+  hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
   hi2c1.Init.OwnAddress2 = 0;
@@ -252,14 +327,6 @@ static void MX_I2C1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN I2C1_Init 2 */
-
-  //HAL_I2C_Slave_Receive_IT(&hi2c1, master_rx, 5);
-
-
-  // HAL_I2C_Slave_Transmit_IT(&hi2c1, master_rx, 5);
-
-  // HAL_I2C_EnableListen_IT(&hi2c1);
-
 
   /* USER CODE END I2C1_Init 2 */
 
@@ -295,8 +362,6 @@ static void MX_USART2_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART2_Init 2 */
-
-  HAL_UART_Receive_IT(&huart2, (uint8_t *) &serial_rxChar, 5);
 
   /* USER CODE END USART2_Init 2 */
 
@@ -337,25 +402,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-/*
- * i2c callback
- */
-void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode)
-{
-	//printf("Address Match %d\n\r",TransferDirection);
-
-	if(TransferDirection ==  I2C_DIRECTION_RECEIVE)
-	{
-		slave_tx[5] += 1;
-		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, slave_tx, 6, I2C_FIRST_AND_LAST_FRAME);
-	}
-
-	if(TransferDirection == I2C_DIRECTION_TRANSMIT )
-	{
-		HAL_I2C_Slave_Seq_Receive_IT(hi2c, slave_rx, 6, I2C_FIRST_AND_LAST_FRAME);
-	}
-}
-
+/* UART - Private user code ---------------------------------------------------------*/
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	// HAL_UART_Transmit(huart, &serial_rxChar, 5, 100); //echo receive data back to serial port.
@@ -455,8 +502,23 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	/* Re-initialize uart receive depend on the command */
 	memset(serial_rxChar,0,sizeof serial_rxChar);
 	HAL_UART_Receive_IT(huart, (uint8_t *) &serial_rxChar, sizeNext);
+}
 
+/* I2C	- Private user code ---------------------------------------------------------*/
+void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode)
+{
+	//printf("Address Match %d\n\r",TransferDirection);
 
+	if(TransferDirection ==  I2C_DIRECTION_RECEIVE)
+	{
+		slave_tx[5] += 1;
+		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, slave_tx, 6, I2C_FIRST_AND_LAST_FRAME);
+	}
+
+	if(TransferDirection == I2C_DIRECTION_TRANSMIT )
+	{
+		HAL_I2C_Slave_Seq_Receive_IT(hi2c, slave_rx, 6, I2C_FIRST_AND_LAST_FRAME);
+	}
 }
 
 void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
@@ -487,11 +549,19 @@ void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
 	memset(master_tx,0,sizeof master_tx);
 }
 
+/* CAN	- Private user code ---------------------------------------------------------*/
+void HAL_CAN_RxFifo0MsgPendingCallBack(CAN_HandleTypeDef *hcan)
+{
+	HAL_UART_Transmit(&huart2, (uint8_t *) "Message Receive\n\r", 17, 100) ;
+}
+
+void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan)
+{
+	HAL_UART_Transmit(&huart2, (uint8_t *) "Message Broadcast\n\r", 20, 100) ;
+}
 
 
-/*
- * uart patch
- */
+/* Fix - Private user code ---------------------------------------------------------*/
 int __io_putchar(int ch)
 {
 	uint8_t c[1];
@@ -510,46 +580,6 @@ int _write(int file,char *ptr, int len)
 	return len;
 }
 
-void printComMsg(uint8_t cmd,uint8_t SlaveAddr,uint8_t Size)
-{
-	switch(cmd)
-	{
-	case FSM_I2C_MasterSetWrite:
-		printf("Master Command: Master Write to Slave \n\r");
-		printf("Slave Address: 0x%d , ",SlaveAddr);
-		printf("Number of Bytes to Write: %d \n\r",Size);
-		break;
-	case FSM_I2C_MasterWriteData:
-		printf("Data transmit : %s \n\n\r",master_tx);
-		break;
-	case FSM_I2C_MasterRead:
-		printf("Master Command: Master Request Read Slave \n\r");
-		printf("Slave Address: 0x%d ",SlaveAddr);
-		printf(", Number of Bytes to Read: %d \n\r",Size);
-		break;
-	case FSM_I2C_MasterSel:
-		printf("Mode Command: Master Enable \n\n\r");
-		break;
-	case FSM_I2C_SlaveSel:
-		printf("Mode Command: Slave Enable \n\r\r");
-		break;
-	case FSM_I2C_SlaveRespSet:
-		printf("Slave Command: Set Slave Response Data \n\r");
-		//printf("Serial Port - Number of Bytes to Receive Next: %d \n\n\r",Size);
-		break;
-	case FSM_I2C_SlaveResp:
-		printf("Slave Response Data : %s \n\r",slave_tx);
-		//printf("Serial Port - Number of Bytes to Receive Next: %d \n\n\r",Size);
-		break;
-	case FSM_I2C_SetSlaveAddr:
-		printf("Slave Command: Set Slave Address 8-bit Mode: %d \n\r", (int) hi2c1.Init.OwnAddress1);
-		break;
-	default:
-
-		printf("Invalid command !");
-		break;
-	}
-}
 
 /* USER CODE END 4 */
 
