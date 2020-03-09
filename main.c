@@ -24,6 +24,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
+#include <stdio.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -97,7 +99,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_CAN1_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
-
+void printComMsg(uint8_t cmd,uint8_t SlaveAddr,uint8_t Size);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -243,7 +245,7 @@ static void MX_CAN1_Init(void)
   /* USER CODE BEGIN CAN1_Init 2 */
 
   uint32_t filter_id = 0x00000000;
-  uint32_t filter_mask = 0x1FFFFFFF8;
+  uint32_t filter_mask = 0x1FFFFFF8;
 
   sFilterConfig.FilterBank = 0;
   sFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
@@ -523,13 +525,13 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
 
 void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-	printf("Slave reception completed - Data: %s \n\r", slave_rx);
+	printf("I2C - Slave reception completed - Data: %s \n\r", slave_rx);
 	memset(slave_rx,0, sizeof slave_rx);
 }
 
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-	printf("Slave transmission completed - Data: %s \n\r", slave_tx);
+	printf("I2C - Slave transmission completed - Data: %s \n\r", slave_tx);
 }
 
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
@@ -550,14 +552,51 @@ void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
 }
 
 /* CAN	- Private user code ---------------------------------------------------------*/
-void HAL_CAN_RxFifo0MsgPendingCallBack(CAN_HandleTypeDef *hcan)
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-	HAL_UART_Transmit(&huart2, (uint8_t *) "Message Receive\n\r", 17, 100) ;
+	int index = 0;
+	printf("CAN - Message Received \t");
+	printf("ID: 0x%X  Message Data: ",(int) RxHeader.StdId);
+	for(index = 0; index < 8; index++)
+	{
+	  printf("0x%X ",RxData[index]);
+	}
+	printf("\n\r");
+	switch(RxHeader.StdId)
+	{
+	case 0x02:
+		TxHeader.StdId = 0x102;	//CAN Standard ID
+		/* prepare data */
+		TxData[0] = 'H';
+		TxData[1] = 'E';
+		TxData[2] = 'L';
+		TxData[3] = 'L';
+		TxData[4] = 'O';
+		TxData[5] = 0x00;
+		TxData[6] = 0x00;
+		TxData[7] = 0x00;
+		HAL_CAN_AddTxMessage(hcan, &TxHeader, TxData, &TxMailbox);
+		break;
+	case 0x03:
+		TxData[0] = 'W';
+		TxData[1] = 'O';
+		TxData[2] = 'R';
+		TxData[3] = 'L';
+		TxData[4] = 'D';
+		TxData[5] = 0x00;
+		TxData[6] = 0x00;
+		TxData[7] = 0x00;
+		TxHeader.StdId = 0x103;	//CAN Standard ID
+		HAL_CAN_AddTxMessage(hcan, &TxHeader, TxData, &TxMailbox);
+		break;
+	default:
+		break;
+	}
 }
 
 void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan)
 {
-	HAL_UART_Transmit(&huart2, (uint8_t *) "Message Broadcast\n\r", 20, 100) ;
+	printf("CAN - Message Transmitted \n\r");
 }
 
 
